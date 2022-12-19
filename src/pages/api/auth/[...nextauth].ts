@@ -7,19 +7,17 @@ import { env } from "../../../env/server.mjs";
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
-  /*callbacks: {
-    async jwt(props) {
-      if (props.user) {
-        props.token.id_token = props.user.id;
+  callbacks: {
+    session: async ({ session, token }) => {
+      if (session?.user) {
+        session.user.id = token.sub;
       }
-
-      return props.token;
-    },
-    async session({ session, token, user }) {
-      session.user_id = token.id_token;
       return session;
     },
-  },*/
+  },
+  session: {
+    strategy: "jwt",
+  },
   providers: [
     GoogleProvider({
       clientId: env.GOOGLE_CLIENT_ID,
