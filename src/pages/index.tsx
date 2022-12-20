@@ -6,26 +6,48 @@ import { signIn, signOut, useSession } from "next-auth/react";
 import { trpc } from "../utils/trpc";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/router";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import React from "react";
+
+const pollSchema = z.object({
+  title: z.string().min(1, { message: "title is required" }),
+  description: z
+    .string()
+    .min(15, { message: "please provider a short description of your poll" }),
+});
+
+interface addPollProps {
+  title: string;
+  description: string;
+}
 
 const Home: NextPage = () => {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const utils = trpc.useContext();
   const { data: sessionData } = useSession();
   const polls = trpc.poll.getAll.useQuery(undefined, {
     enabled: sessionData?.user !== undefined,
   });
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm({ resolver: zodResolver(pollSchema) });
 
   const addPoll = trpc.poll.addPoll.useMutation({
     onSuccess: async () => {
       utils.poll.getAll.invalidate();
+      reset();
     },
   });
 
-  const handleAddPoll = () => {
+  const handleAddPoll = ({ title, description }: addPollProps) => {
     addPoll.mutate({
-      title: "Test",
-      description: "This is just a Test",
+      title: title,
+      description: description,
     });
   };
 
@@ -40,19 +62,40 @@ const Home: NextPage = () => {
         <AuthShowcase />
         <div className="flex flex-row flex-wrap items-center gap-6">
           {polls.data?.map((poll) => (
-            <div key={poll.id} className="h-12 w-12 bg-purple-300"></div>
+            <article key={poll.id} className="bg-purple-300 p-4">
+              <h3>{poll.title}</h3>
+              <p>{poll.description}</p>
+            </article>
           ))}
         </div>
         <div className="mt-10" />
-        <button
-          className={`rounded-full bg-purple-600 px-8 py-2 hover:bg-purple-400 active:bg-purple-700 ${
-            addPoll.isLoading && "bg-gray-400"
-          } `}
-          onClick={handleAddPoll}
-          disabled={addPoll.isLoading}
+        <form
+          onSubmit={handleSubmit((values) =>
+            handleAddPoll({
+              title: values.title,
+              description: values.description,
+            })
+          )}
         >
-          Add Poll
-        </button>
+          <div>
+            <>
+              <input {...register("title")} />
+              {errors.title?.message}
+              <textarea {...register("description")} />
+              {errors.description?.message}
+
+              <button
+                type="submit"
+                className={`rounded-full bg-purple-600 px-8 py-2 hover:bg-purple-400 active:bg-purple-700 ${
+                  addPoll.isLoading && "bg-gray-400"
+                } `}
+                disabled={addPoll.isLoading}
+              >
+                Add Poll
+              </button>
+            </>
+          </div>
+        </form>
       </main>
     </>
   );
