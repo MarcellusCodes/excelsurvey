@@ -4,23 +4,30 @@ import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
 
 import { trpc } from "../utils/trpc";
-import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/router";
-import { useForm } from "react-hook-form";
+import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import React from "react";
 
 const pollSchema = z.object({
-  title: z.string().min(1, { message: "title is required" }),
+  title: z.string().min(1, { message: "Title is required" }),
   description: z
     .string()
-    .min(15, { message: "please provider a short description of your poll" }),
+    .min(15, { message: "Please provider a short description of your poll" }),
+  choices: z.array(
+    z.object({
+      title: z.string().min(1, {
+        message: "Choice is required",
+      }),
+    })
+  ),
 });
 
-interface addPollProps {
+interface AddPollProps {
   title: string;
   description: string;
+  choices: { title: string }[];
 }
 
 const Home: NextPage = () => {
@@ -32,22 +39,40 @@ const Home: NextPage = () => {
   });
   const {
     register,
+    control,
     handleSubmit,
-    reset,
+
     formState: { errors },
-  } = useForm({ resolver: zodResolver(pollSchema) });
+  } = useForm<AddPollProps>({ resolver: zodResolver(pollSchema) });
+
+  const { fields, prepend } = useFieldArray({
+    name: "choices",
+    control,
+  });
 
   const addPoll = trpc.poll.addPoll.useMutation({
-    onSuccess: async () => {
-      utils.poll.getAll.invalidate();
-      reset();
+    onSuccess: async (context) => {
+      router.push(`/polls/${context.id}`);
     },
   });
 
-  const handleAddPoll = ({ title, description }: addPollProps) => {
+  const handleAddPoll = ({ title, description, choices }: AddPollProps) => {
     addPoll.mutate({
       title: title,
       description: description,
+      choices: choices,
+    });
+  };
+
+  const deletePoll = trpc.poll.deletePoll.useMutation({
+    onSuccess: async () => {
+      utils.poll.getAll.invalidate();
+    },
+  });
+
+  const handleDeletePoll = ({ id }: { id: string }) => {
+    deletePoll.mutate({
+      id: id,
     });
   };
 
@@ -65,6 +90,16 @@ const Home: NextPage = () => {
             <article key={poll.id} className="bg-purple-300 p-4">
               <h3>{poll.title}</h3>
               <p>{poll.description}</p>
+              <Link className="bg-purple-600 p-2 " href={`/polls/${poll.id}`}>
+                Go to
+              </Link>
+              <button
+                onClick={() => {
+                  handleDeletePoll({ id: poll.id });
+                }}
+              >
+                Delete Poll
+              </button>
             </article>
           ))}
         </div>
@@ -74,6 +109,7 @@ const Home: NextPage = () => {
             handleAddPoll({
               title: values.title,
               description: values.description,
+              choices: values.choices,
             })
           )}
         >
@@ -83,6 +119,20 @@ const Home: NextPage = () => {
               {errors.title?.message}
               <textarea {...register("description")} />
               {errors.description?.message}
+              <button type="button" onClick={() => prepend({ title: "" })}>
+                Add Choice
+              </button>
+              <div className="flex flex-col items-start">
+                {fields.map((field, index) => (
+                  <div key={index}>
+                    <input
+                      key={field.id}
+                      {...register(`choices.${index}.title` as const)}
+                    />
+                    {errors?.["choices"]?.[index]?.["title"]?.["message"]}
+                  </div>
+                ))}
+              </div>
 
               <button
                 type="submit"
@@ -126,3 +176,15 @@ const AuthShowcase: React.FC = () => {
     </div>
   );
 };
+
+export async function getServerSideProps({ req }) {
+  console.log(req.headers);
+  const ip = req.headers["x-real-ip"] || req.connection.remoteAddress;
+  console.log(ip, "################## - IP");
+
+  return {
+    props: {
+      ip,
+    }, // will be passed to the page component as props
+  };
+}
